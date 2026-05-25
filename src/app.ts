@@ -14,6 +14,7 @@ import clientController from './controllers/clientController';
 import workspaceController from './controllers/workspaceController';
 
 const app: Application = express();
+app.set('trust proxy', 1);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Security Middleware
