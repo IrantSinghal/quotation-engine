@@ -4,9 +4,12 @@ import fs from 'fs';
 
 const { NODE_ENV = 'development', LOG_LEVEL = 'debug', LOG_FILE = './logs/app.log' } = process.env;
 
-// Ensure log directory exists
+// Check if running on Vercel's serverless platform
+const isVercel = !!process.env.VERCEL;
 const logDir = path.dirname(LOG_FILE);
-if (!fs.existsSync(logDir)) {
+
+// Only create a local logging directory if NOT on Vercel
+if (!isVercel && !fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
 
@@ -24,13 +27,17 @@ const fileFormat = winston.format.combine(
   winston.format.json()
 );
 
-export const logger = winston.createLogger({
-  level: LOG_LEVEL,
-  transports: [
-    new winston.transports.Console({
-      format: consoleFormat,
-      silent: NODE_ENV === 'test',
-    }),
+// Base transports array - Console logging is safe and required everywhere
+const transports: winston.transport[] = [
+  new winston.transports.Console({
+    format: consoleFormat,
+    silent: NODE_ENV === 'test',
+  }),
+];
+
+// Dynamically push file transports ONLY when running locally, avoiding Vercel's read-only crash
+if (!isVercel) {
+  transports.push(
     new winston.transports.File({
       filename: LOG_FILE,
       format: fileFormat,
@@ -44,6 +51,11 @@ export const logger = winston.createLogger({
       format: fileFormat,
       maxsize: 10 * 1024 * 1024,
       maxFiles: 5,
-    }),
-  ],
+    })
+  );
+}
+
+export const logger = winston.createLogger({
+  level: LOG_LEVEL,
+  transports: transports,
 });
