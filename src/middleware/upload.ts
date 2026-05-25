@@ -4,8 +4,10 @@ import fs from 'fs';
 import { Request } from 'express';
 import { config } from '../config/app';
 
-// Ensure upload directory exists
-if (!fs.existsSync(config.upload.dir)) {
+const isVercel = !!process.env.VERCEL;
+
+// Ensure upload directory exists ONLY when running locally
+if (!isVercel && !fs.existsSync(config.upload.dir)) {
   fs.mkdirSync(config.upload.dir, { recursive: true });
 }
 
