@@ -202,7 +202,7 @@ function parseNumericCell(value: unknown, fieldName: string, rowIndex: number): 
   return { value: num, error: null };
 }
 
-eexport async function bulkIngestProducts(
+export async function bulkIngestProducts(
   workspaceId: string,
   fileBuffer: Buffer,
   originalFilename: string
