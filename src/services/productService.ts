@@ -311,7 +311,7 @@ export async function bulkIngestProducts(
       // If workspaceId is null, undefined, or the string "undefined", force-inject your real UUID
       const cleanWorkspaceId = (workspaceId && workspaceId !== 'undefined' && workspaceId !== 'null')
         ? workspaceId
-        : "YOUR_REAL_SUPABASE_WORKSPACE_UUID_HERE"; // <-- Put your real active UUID here!
+        : "89a7c350-2680-4aef-bfd2-c1e50c26646c"; // <-- Put your real active UUID here!
 
       const result = await client.query<{ operation: string }>(
         `INSERT INTO products (workspace_id, sku, name, description, base_price, tax_rate, stock_quantity, unit)
