@@ -309,9 +309,7 @@ export async function bulkIngestProducts(
     for (const row of validRows) {
       // 🌟 ABSOLUTE FALLBACK SHIELD: 
       // If workspaceId is null, undefined, or the string "undefined", force-inject your real UUID
-      const cleanWorkspaceId = (workspaceId && workspaceId !== 'undefined' && workspaceId !== 'null')
-        ? workspaceId
-        : "89a7c350-2680-4aef-bfd2-c1e50c26646c"; // <-- Put your real active UUID here!
+      // <-- Put your real active UUID here!
 
       const result = await client.query<{ operation: string }>(
         `INSERT INTO products (workspace_id, sku, name, description, base_price, tax_rate, stock_quantity, unit)
@@ -327,7 +325,7 @@ export async function bulkIngestProducts(
            updated_at     = NOW()
          RETURNING (xmax = 0) AS is_insert`,
         [
-          cleanWorkspaceId, // Guaranteed non-null valid UUID string token at $1
+          workspaceId, // Guaranteed non-null valid UUID string token at $1
           row.sku,
           row.name,
           row.description || null,
