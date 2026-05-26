@@ -147,6 +147,7 @@ router.post(
         });
         return;
       }
+      const activeWorkspaceId = "89a7c350-2680-4aef-bfd2-c1e50c26646c";
 
       const result = await bulkIngestProducts(
         req.workspace_id!,
