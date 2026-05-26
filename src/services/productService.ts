@@ -172,9 +172,19 @@ const HEADER_ALIASES: Record<string, keyof BulkProductRow> = {
   'unit of measure': 'unit',
 };
 
-function normalizeHeader(raw: string): keyof BulkProductRow | null {
-  const normalized = raw.toLowerCase().trim().replace(/[^a-z0-9 ]/g, '');
-  return HEADER_ALIASES[normalized] ?? null;
+function normalizeHeader(rawHeader: string): string | null {
+  const clean = rawHeader.toLowerCase().trim().replace(/[\s_-]/g, '');
+
+  // Map variations dynamically to your database keys
+  if (['sku', 'productcode', 'itemcode', 'articlenumber'].includes(clean)) return 'sku';
+  if (['name', 'productname', 'itemname', 'title'].includes(clean)) return 'name';
+  if (['price', 'baseprice', 'unitprice', 'rate', 'cost', 'unitcost'].includes(clean)) return 'base_price';
+  if (['tax', 'taxrate', 'gst', 'vat'].includes(clean)) return 'tax_rate';
+  if (['qty', 'quantity', 'stock', 'stockquantity'].includes(clean)) return 'stock_quantity';
+  if (['unit', 'uom', 'type'].includes(clean)) return 'unit';
+  if (['description', 'details'].includes(clean)) return 'description';
+
+  return null;
 }
 
 function parseNumericCell(value: unknown, fieldName: string, rowIndex: number): { value: number | null; error: string | null } {
