@@ -41,16 +41,27 @@ function generateRefreshToken(payload: Omit<AuthTokenPayload, 'iat' | 'exp'>): s
   } as jwt.SignOptions);
 }
 
-async function storeRefreshToken(userId: string, rawRefreshToken: string): Promise<void> {
+/**
+ * Stores a refresh token in the database.
+ * Accepts an optional PoolClient to participate in an active atomic transaction.
+ */
+async function storeRefreshToken(userId: string, rawRefreshToken: string, dbClient?: PoolClient): Promise<void> {
   const tokenHash = await bcrypt.hash(rawRefreshToken, config.bcrypt.saltRounds);
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  await query(
-    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-     VALUES ($1, $2, $3)`,
-    [userId, tokenHash, expiresAt]
-  );
+  const sqlQuery = `
+    INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+    VALUES ($1, $2, $3)
+  `;
+  const params = [userId, tokenHash, expiresAt];
+
+  // If inside an active transaction worker, execute on that client directly
+  if (dbClient) {
+    await dbClient.query(sqlQuery, params);
+  } else {
+    await query(sqlQuery, params);
+  }
 }
 
 function toUserPublic(user: User): UserPublic {
@@ -125,7 +136,9 @@ export async function registerWithEmail(dto: RegisterDto): Promise<AuthResult> {
 
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
-    await storeRefreshToken(user.id, refreshToken);
+
+    // Pass the active transaction client parameter here to prevent foreign key errors
+    await storeRefreshToken(user.id, refreshToken, client);
 
     logger.info('New workspace and owner registered', { userId: user.id, workspaceId: workspace.id });
 
@@ -200,12 +213,9 @@ export async function loginWithEmail(dto: LoginDto): Promise<AuthResult> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Google OAuth — with Identity Merging
-// If the verified Google email matches an existing user record, bind the
-// google_provider_id to that record instead of creating a duplicate.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
-  // 1. Verify the Google ID token
   let googlePayload: {
     sub: string;
     email: string;
@@ -237,7 +247,6 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
     throw new ValidationError('Google account email is not verified.');
   }
 
-  // 2. Fetch the workspace
   const workspaceResult = await query<Workspace>(
     'SELECT * FROM workspaces WHERE slug = $1 AND is_active = TRUE',
     [dto.workspace_slug]
@@ -247,10 +256,6 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
   }
   const workspace = workspaceResult.rows[0];
 
-  // 3. Identity Merging Strategy:
-  //    a) Check if a user with this google_provider_id already exists
-  //    b) If not, check if a user with this email already exists → MERGE
-  //    c) If neither, create a new user
   let user: User;
 
   const byGoogleId = await query<User>(
@@ -259,7 +264,6 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
   );
 
   if (byGoogleId.rows.length > 0) {
-    // Returning Google user — just update last login
     user = byGoogleId.rows[0];
   } else {
     const byEmail = await query<User>(
@@ -268,7 +272,6 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
     );
 
     if (byEmail.rows.length > 0) {
-      // IDENTITY MERGE: existing email/password account → bind Google provider ID
       const existingUser = byEmail.rows[0];
       const mergeResult = await query<User>(
         `UPDATE users
@@ -283,7 +286,6 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
         workspaceId: workspace.id,
       });
     } else {
-      // New user — create account via Google
       const createResult = await query<User>(
         `INSERT INTO users (workspace_id, email, full_name, google_provider_id, role)
          VALUES ($1, $2, $3, $4, 'member')
@@ -334,7 +336,6 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<{ acc
     throw new AppError('Invalid or expired refresh token.', 401, 'REFRESH_TOKEN_INVALID');
   }
 
-  // Find a non-revoked, non-expired token for this user
   const tokenRows = await query<{ id: string; token_hash: string; revoked: boolean }>(
     `SELECT id, token_hash, revoked FROM refresh_tokens
      WHERE user_id = $1 AND revoked = FALSE AND expires_at > NOW()
@@ -355,7 +356,6 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<{ acc
     throw new AppError('Refresh token not recognized or already revoked.', 401, 'REFRESH_TOKEN_INVALID');
   }
 
-  // Revoke the used token (rotation)
   await query('UPDATE refresh_tokens SET revoked = TRUE WHERE id = $1', [matchedTokenId]);
 
   const newTokenPayload: Omit<AuthTokenPayload, 'iat' | 'exp'> = {

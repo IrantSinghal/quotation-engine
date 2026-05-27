@@ -19,38 +19,20 @@ const router = Router();
 router.post(
   '/register',
   validate([
+    body('name').trim().notEmpty().withMessage('Name is required.'),
     body('email').isEmail().normalizeEmail().withMessage('A valid email address is required.'),
-    body('password')
-      .isLength({ min: 8 })
-      .withMessage('Password must be at least 8 characters.')
-      .matches(/[A-Z]/)
-      .withMessage('Password must contain at least one uppercase letter.')
-      .matches(/[0-9]/)
-      .withMessage('Password must contain at least one number.'),
-    body('full_name')
-      .trim()
-      .isLength({ min: 2, max: 255 })
-      .withMessage('Full name must be between 2 and 255 characters.'),
-    body('workspace_name')
-      .trim()
-      .isLength({ min: 2, max: 255 })
-      .withMessage('Workspace name must be between 2 and 255 characters.'),
-    body('workspace_slug')
-      .trim()
-      .toLowerCase()
-      .matches(/^[a-z0-9-]+$/)
-      .withMessage('Workspace slug may only contain lowercase letters, numbers, and hyphens.')
-      .isLength({ min: 2, max: 100 })
-      .withMessage('Workspace slug must be between 2 and 100 characters.'),
-    body('phone_number')
-      .optional()
-      .isMobilePhone('any')
-      .withMessage('Invalid phone number format.'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long.'),
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // Delegate database insertions safely to the service layer
       const result = await registerWithEmail(req.body);
-      res.status(201).json({ success: true, data: result, message: 'Workspace and account created successfully.' });
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: "Registration successful. New user and workspace created.",
+      });
     } catch (err) {
       next(err);
     }
