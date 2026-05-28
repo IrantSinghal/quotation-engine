@@ -103,7 +103,7 @@ export async function registerWithEmail(dto: RegisterDto): Promise<AuthResult> {
       `INSERT INTO workspaces (name, slug)
        VALUES ($1, $2)
        RETURNING *`,
-      [dto.workspace_full_name, dto.workspace_slug]
+      [dto.workspace_name, dto.workspace_slug]
     );
     const workspace = workspaceResult.rows[0];
 
