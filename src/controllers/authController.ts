@@ -19,15 +19,15 @@ const router = Router();
 router.post(
   '/register',
   validate([
-    body('name').trim().notEmpty().withMessage('Name is required.'),
+    body('full_name').trim().isLength({ min: 2, max: 225 }).notEmpty().withMessage('User full name is required.'),
     body('email').isEmail().normalizeEmail().withMessage('A valid email address is required.'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long.'),
+    body('workspace_name').trim().notEmpty().withMessage('Workspace name is required.'),
+    body('workspace_slug').trim().notEmpty().matches(/^[a-z0-9-]+$/).withMessage('Workspace slug must be URL-safe (lowercase, numbers, hyphens).'),
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Delegate database insertions safely to the service layer
       const result = await registerWithEmail(req.body);
-
       res.status(201).json({
         success: true,
         data: result,
