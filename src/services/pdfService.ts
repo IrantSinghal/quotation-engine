@@ -76,6 +76,7 @@ export async function compileQuotationPdf(
     [workspaceId]
   );
   const workspace = workspaceResult.rows[0];
+  console.log('Workspace T&C:', workspace.terms_and_conditions);
 
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
