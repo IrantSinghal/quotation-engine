@@ -546,34 +546,57 @@ function renderTermsSection(doc: PDFKit.PDFDocument, workspace: Workspace): void
 // ─────────────────────────────────────────────────────────────────────────────
 // Section: Footer (page numbers)
 // ─────────────────────────────────────────────────────────────────────────────
-function renderTermsSection(doc: PDFKit.PDFDocument, workspace: Workspace): void {
-  const terms = workspace.terms_and_conditions;
-  if (!terms || terms.trim() === '') return;
+function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
+  const range = doc.bufferedPageRange();
+  const totalPages = range.count;
 
-  if (doc.y + 80 > PAGE.height - PAGE.marginBottom) {
-    doc.addPage();
-    doc.y = PAGE.marginTop;
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(i);
+
+    // ── Watermark ──
+    doc.save();
+    doc.translate(PAGE.width / 2, PAGE.height / 2);
+    doc.rotate(-45);
+    doc
+      .font(FONT.bold)
+      .fontSize(48)
+      .fillColor('#1A365D')
+      .fillOpacity(0.045)
+      .text('OFFICIAL DOCUMENT', -200, -24, { width: 400, align: 'center' });
+    doc
+      .fontSize(18)
+      .fillOpacity(0.03)
+      .text(workspace.name.toUpperCase(), -160, 34, { width: 320, align: 'center' });
+    doc.restore();
+    doc.fillOpacity(1);
+
+    // ── Footer divider ──
+    const footerY = PAGE.height - PAGE.marginBottom + 10;
+    doc
+      .moveTo(PAGE.marginX, footerY)
+      .lineTo(PAGE.marginX + CONTENT_WIDTH, footerY)
+      .strokeColor(COLORS.border)
+      .lineWidth(0.5)
+      .stroke();
+
+    // Left: workspace name
+    doc
+      .font(FONT.regular).fontSize(7.5).fillColor(COLORS.textLight)
+      .text(workspace.name, PAGE.marginX, footerY + 8, { width: 180 });
+
+    // Center: thank you
+    doc
+      .font(FONT.oblique).fontSize(7.5).fillColor(COLORS.textLight)
+      .text('Thank you for your business.', PAGE.marginX + 160, footerY + 8, {
+        width: 180, align: 'center',
+      });
+
+    // Right: page number
+    doc
+      .font(FONT.regular).fontSize(7.5).fillColor(COLORS.textLight)
+      .text(`Page ${i + 1} of ${totalPages}`, PAGE.width - PAGE.marginX - 80, footerY + 8, {
+        width: 80, align: 'right',
+      });
   }
-
-  const startY = doc.y + 10;
-
-  doc
-    .moveTo(PAGE.marginX, startY)
-    .lineTo(PAGE.marginX + CONTENT_WIDTH, startY)
-    .strokeColor(COLORS.border)
-    .lineWidth(0.8)
-    .stroke();
-
-  doc
-    .font(FONT.bold).fontSize(9).fillColor(COLORS.textLight)
-    .text('TERMS & CONDITIONS', PAGE.marginX, startY + 10);
-
-  doc
-    .font(FONT.regular).fontSize(8).fillColor(COLORS.textLight)
-    .text(terms.trim(), PAGE.marginX, startY + 24, {
-      width: CONTENT_WIDTH,
-      lineBreak: true,
-      lineGap: 2,
-    });
 }
 
