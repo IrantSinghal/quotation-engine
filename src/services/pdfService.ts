@@ -80,6 +80,43 @@ function formatDate(date: Date | string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// render watermark
+// ─────────────────────────────────────────────────────────────────────────────
+function drawWatermarkOnCurrentPage(doc: PDFKit.PDFDocument, companyName: string): void {
+  const name = companyName.toUpperCase();
+  const tileW = 180;
+  const tileH = 100;
+  const cols = Math.ceil(PAGE.width / tileW) + 2;
+  const rows = Math.ceil(PAGE.height / tileH) + 2;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = (col - 0.5) * tileW;
+      const y = (row - 0.5) * tileH;
+
+      doc
+        .save()
+        .translate(x, y)
+        .rotate(-35)
+        .font(FONT.bold)
+        .fontSize(13)
+        .fillColor('#1A365D')
+        .fillOpacity(0.09)
+        .text(name, -90, 0, {
+          width: 180,
+          align: 'center',
+          lineBreak: false,
+        })
+        .restore();
+    }
+  }
+
+  // Reset graphics state
+  doc.fillOpacity(1);
+  doc.fillColor('#000000');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main PDF Compilation Engine
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -89,11 +126,11 @@ export async function compileQuotationPdf(
 ): Promise<Buffer> {
   const quotation = await getQuotationById(workspaceId, quotationId);
 
-  const workspaceResult = await query<Workspace>(
+  const wsResult = await query<Workspace>(
     'SELECT * FROM workspaces WHERE id = $1',
     [workspaceId]
   );
-  const workspace = workspaceResult.rows[0];
+  const workspace = wsResult.rows[0];
   console.log('Workspace T&C:', workspace.terms_and_conditions);
 
   return new Promise<Buffer>((resolve, reject) => {
@@ -111,9 +148,17 @@ export async function compileQuotationPdf(
         Subject: `Quotation for ${quotation.client.company_name}`,
         Creator: 'Quotation Engine',
       },
-      autoFirstPage: true,
       bufferPages: true,
+      autoFirstPage: true,
     });
+
+    // Draw watermark on the first page immediately when it opens
+    doc.on('pageAdded', () => {
+      drawWatermarkOnCurrentPage(doc, workspace.name);
+    });
+
+    // Also draw on the very first page since pageAdded doesn't fire for it
+    drawWatermarkOnCurrentPage(doc, workspace.name);
 
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -126,8 +171,7 @@ export async function compileQuotationPdf(
       renderLineItemsTable(doc, quotation, workspace.currency_code);
       renderTotalsSection(doc, quotation, workspace.currency_code);
       renderTermsSection(doc, workspace);
-      renderFooter(doc, workspace);    // footer + page numbers first
-      renderWatermark(doc, workspace);
+      renderFooter(doc, workspace);
     } catch (err) {
       reject(err);
       return;
@@ -595,45 +639,3 @@ function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
       );
   }
 }
-function renderWatermark(doc: PDFKit.PDFDocument, workspace: Workspace): void {
-  doc.flushPages();
-
-  const range = doc.bufferedPageRange();
-  const totalPages = range.count;
-  const companyName = workspace.name.toUpperCase();
-
-  for (let i = 0; i < totalPages; i++) {
-    doc.switchToPage(range.start + i);
-
-    const tileW = 180;
-    const tileH = 100;
-    const cols = Math.ceil(PAGE.width / tileW) + 2;
-    const rows = Math.ceil(PAGE.height / tileH) + 2;
-
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const x = (col - 0.5) * tileW;
-        const y = (row - 0.5) * tileH;
-
-        doc
-          .save()
-          .translate(x, y)
-          .rotate(-35)
-          .font(FONT.bold)
-          .fontSize(13)
-          .fillColor('#1A365D')
-          .fillOpacity(0.07)
-          .text(companyName, -90, 0, {
-            width: 180,
-            align: 'center',
-            lineBreak: false,
-          })
-          .restore();
-      }
-    }
-
-    doc.fillOpacity(1);
-    doc.fillColor(COLORS.text);
-  }
-}
-
