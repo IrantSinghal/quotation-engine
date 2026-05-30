@@ -126,7 +126,8 @@ export async function compileQuotationPdf(
       renderLineItemsTable(doc, quotation, workspace.currency_code);
       renderTotalsSection(doc, quotation, workspace.currency_code);
       renderTermsSection(doc, workspace);
-      renderFooter(doc, workspace);
+      renderFooter(doc, workspace);    // footer + page numbers first
+      renderWatermark(doc, workspace);
     } catch (err) {
       reject(err);
       return;
@@ -561,40 +562,7 @@ function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
   for (let i = 0; i < totalPages; i++) {
     doc.switchToPage(range.start + i);
 
-    // ── Tiled watermark — company name repeated across entire page ──
-    // ── Tiled watermark — company name repeated across entire page ──
-    const companyName = workspace.name.toUpperCase();
-    const tileW = 200;
-    const tileH = 110;
-    const cols = Math.ceil(PAGE.width / tileW) + 1;
-    const rows = Math.ceil(PAGE.height / tileH) + 1;
 
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const centerX = col * tileW;
-        const centerY = row * tileH;
-
-        doc
-          .save()
-          .translate(centerX, centerY)
-          .rotate(-35)
-          .font(FONT.bold)
-          .fontSize(14)
-          .fillColor('#1A365D')
-          .fillOpacity(0.08)
-          .text(companyName, -100, 0, {
-            width: 200,
-            align: 'center',
-            lineBreak: false,
-          })
-          .restore();
-      }
-    }
-
-    // Reset state after watermark
-    doc.fillOpacity(1).fillColor(COLORS.text);
-    doc.restore();
-    doc.fillOpacity(1);
 
     // ── Footer divider ──
     const footerY = PAGE.height - PAGE.marginBottom + 10;
@@ -625,6 +593,47 @@ function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
         PAGE.width - PAGE.marginX - 80, footerY + 8,
         { width: 80, align: 'right' }
       );
+  }
+}
+function renderWatermark(doc: PDFKit.PDFDocument, workspace: Workspace): void {
+  doc.flushPages();
+
+  const range = doc.bufferedPageRange();
+  const totalPages = range.count;
+  const companyName = workspace.name.toUpperCase();
+
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(range.start + i);
+
+    const tileW = 180;
+    const tileH = 100;
+    const cols = Math.ceil(PAGE.width / tileW) + 2;
+    const rows = Math.ceil(PAGE.height / tileH) + 2;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = (col - 0.5) * tileW;
+        const y = (row - 0.5) * tileH;
+
+        doc
+          .save()
+          .translate(x, y)
+          .rotate(-35)
+          .font(FONT.bold)
+          .fontSize(13)
+          .fillColor('#1A365D')
+          .fillOpacity(0.07)
+          .text(companyName, -90, 0, {
+            width: 180,
+            align: 'center',
+            lineBreak: false,
+          })
+          .restore();
+      }
+    }
+
+    doc.fillOpacity(1);
+    doc.fillColor(COLORS.text);
   }
 }
 
