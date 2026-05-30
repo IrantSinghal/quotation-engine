@@ -44,10 +44,15 @@ const CONTENT_WIDTH = PAGE.width - PAGE.marginX * 2;
 // Helper: Format currency
 // ─────────────────────────────────────────────────────────────────────────────
 const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: '₹', USD: '$', EUR: '€', GBP: '£',
-  AED: 'AED ', SGD: 'S$', AUD: 'A$', CAD: 'C$',
+  INR: 'Rs. ',
+  USD: '$ ',
+  EUR: 'EUR ',
+  GBP: 'GBP ',
+  AED: 'AED ',
+  SGD: 'SGD ',
+  AUD: 'AUD ',
+  CAD: 'CAD ',
 };
-
 function formatIndianNumber(num: number): string {
   const fixed = num.toFixed(2);
   const [intPart, decPart] = fixed.split('.');
@@ -549,20 +554,45 @@ function renderTermsSection(doc: PDFKit.PDFDocument, workspace: Workspace): void
 // ─────────────────────────────────────────────────────────────────────────────
 function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
   doc.flushPages();
+
   const range = doc.bufferedPageRange();
   const totalPages = range.count;
 
   for (let i = 0; i < totalPages; i++) {
-    doc.switchToPage(i);
+    doc.switchToPage(range.start + i);
 
-    // ── Watermark ──
+    // ── Tiled watermark — company name repeated across entire page ──
     doc.save();
-    doc.translate(PAGE.width / 2, PAGE.height / 2);
-    doc.rotate(-45);
-    doc
-      .fontSize(18)
-      .fillOpacity(0.03)
-      .text(workspace.name.toUpperCase(), -160, 34, { width: 320, align: 'center' });
+    doc.fillColor('#1A365D').fillOpacity(0.06);
+
+    // Tile the company name in a grid pattern across the full page
+    const companyName = workspace.name.toUpperCase();
+    const tileW = 220;
+    const tileH = 120;
+    const cols = Math.ceil(PAGE.width / tileW) + 1;
+    const rows = Math.ceil(PAGE.height / tileH) + 1;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = col * tileW - 40;
+        const y = row * tileH - 20;
+
+        doc.save();
+        // Center of each tile
+        doc.translate(x + tileW / 2, y + tileH / 2);
+        doc.rotate(-35);
+        doc
+          .font(FONT.bold)
+          .fontSize(16)
+          .text(companyName, -tileW / 2, -10, {
+            width: tileW,
+            align: 'center',
+            lineBreak: false,
+          });
+        doc.restore();
+      }
+    }
+
     doc.restore();
     doc.fillOpacity(1);
 
@@ -590,9 +620,11 @@ function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
     // Right: page number
     doc
       .font(FONT.regular).fontSize(7.5).fillColor(COLORS.textLight)
-      .text(`Page ${i + 1} of ${totalPages}`, PAGE.width - PAGE.marginX - 80, footerY + 8, {
-        width: 80, align: 'right',
-      });
+      .text(
+        `Page ${i + 1} of ${totalPages}`,
+        PAGE.width - PAGE.marginX - 80, footerY + 8,
+        { width: 80, align: 'right' }
+      );
   }
 }
 
