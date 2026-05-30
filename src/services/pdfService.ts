@@ -562,37 +562,37 @@ function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
     doc.switchToPage(range.start + i);
 
     // ── Tiled watermark — company name repeated across entire page ──
-    doc.save();
-    doc.fillColor('#1A365D').fillOpacity(0.06);
-
-    // Tile the company name in a grid pattern across the full page
+    // ── Tiled watermark — company name repeated across entire page ──
     const companyName = workspace.name.toUpperCase();
-    const tileW = 220;
-    const tileH = 120;
+    const tileW = 200;
+    const tileH = 110;
     const cols = Math.ceil(PAGE.width / tileW) + 1;
     const rows = Math.ceil(PAGE.height / tileH) + 1;
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
-        const x = col * tileW - 40;
-        const y = row * tileH - 20;
+        const centerX = col * tileW;
+        const centerY = row * tileH;
 
-        doc.save();
-        // Center of each tile
-        doc.translate(x + tileW / 2, y + tileH / 2);
-        doc.rotate(-35);
         doc
+          .save()
+          .translate(centerX, centerY)
+          .rotate(-35)
           .font(FONT.bold)
-          .fontSize(16)
-          .text(companyName, -tileW / 2, -10, {
-            width: tileW,
+          .fontSize(14)
+          .fillColor('#1A365D')
+          .fillOpacity(0.08)
+          .text(companyName, -100, 0, {
+            width: 200,
             align: 'center',
             lineBreak: false,
-          });
-        doc.restore();
+          })
+          .restore();
       }
     }
 
+    // Reset state after watermark
+    doc.fillOpacity(1).fillColor(COLORS.text);
     doc.restore();
     doc.fillOpacity(1);
 
