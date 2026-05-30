@@ -43,22 +43,35 @@ const CONTENT_WIDTH = PAGE.width - PAGE.marginX * 2;
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: Format currency
 // ─────────────────────────────────────────────────────────────────────────────
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  INR: '₹', USD: '$', EUR: '€', GBP: '£',
+  AED: 'AED ', SGD: 'S$', AUD: 'A$', CAD: 'C$',
+};
+
+function formatIndianNumber(num: number): string {
+  const fixed = num.toFixed(2);
+  const [intPart, decPart] = fixed.split('.');
+  if (intPart.length <= 3) return `${intPart}.${decPart}`;
+  const lastThree = intPart.slice(-3);
+  const remaining = intPart.slice(0, -3);
+  const grouped = remaining.replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+  return `${grouped},${lastThree}.${decPart}`;
+}
+
 function formatCurrency(amount: string | number, currencyCode: string): string {
   const num = new Decimal(String(amount)).toDecimalPlaces(2).toNumber();
-  try {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: currencyCode,
-      minimumFractionDigits: 2,
-    }).format(num);
-  } catch {
-    return `${currencyCode} ${num.toFixed(2)}`;
-  }
+  const symbol = CURRENCY_SYMBOLS[currencyCode] || `${currencyCode} `;
+  const formatted = currencyCode === 'INR'
+    ? formatIndianNumber(num)
+    : num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${symbol}${formatted}`;
 }
 
 function formatDate(date: Date | string): string {
   const d = date instanceof Date ? date : new Date(date);
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const day = String(d.getDate()).padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${day} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,14 +316,14 @@ function renderLineItemsTable(
 
   // Column definitions: [label, x offset, width, align]
   const cols: Array<{ label: string; x: number; width: number; align: 'left' | 'right' | 'center' }> = [
-    { label: '#', x: PAGE.marginX, width: 24, align: 'center' },
-    { label: 'Description', x: PAGE.marginX + 24, width: 180, align: 'left' },
-    { label: 'SKU', x: PAGE.marginX + 204, width: 70, align: 'left' },
-    { label: 'Qty', x: PAGE.marginX + 274, width: 35, align: 'right' },
-    { label: 'Unit Price', x: PAGE.marginX + 309, width: 75, align: 'right' },
-    { label: 'Disc %', x: PAGE.marginX + 384, width: 40, align: 'right' },
-    { label: 'Tax %', x: PAGE.marginX + 424, width: 40, align: 'right' },
-    { label: 'Total', x: PAGE.marginX + 464, width: 83, align: 'right' },
+    { label: '#', x: PAGE.marginX, width: 20, align: 'center' },
+    { label: 'Description', x: PAGE.marginX + 20, width: 158, align: 'left' },
+    { label: 'SKU', x: PAGE.marginX + 178, width: 62, align: 'left' },
+    { label: 'Qty', x: PAGE.marginX + 240, width: 32, align: 'right' },
+    { label: 'Unit Price', x: PAGE.marginX + 272, width: 78, align: 'right' },
+    { label: 'Disc %', x: PAGE.marginX + 350, width: 38, align: 'right' },
+    { label: 'Tax %', x: PAGE.marginX + 388, width: 36, align: 'right' },
+    { label: 'Total', x: PAGE.marginX + 424, width: 75, align: 'right' },
   ];
 
   const headerH = 22;
@@ -346,66 +359,63 @@ function renderLineItemsTable(
       .stroke();
 
     const textY = rowY + 8;
-    doc.font(FONT.regular).fontSize(8.5).fillColor(COLORS.text);
 
-    // # (item number)
-    doc.text(String(i + 1), PAGE.marginX + 4, textY, { width: 16, align: 'center' });
+    // # number
+    doc.font(FONT.regular).fontSize(8).fillColor(COLORS.textLight)
+      .text(String(i + 1), PAGE.marginX + 2, textY, { width: 16, align: 'center' });
 
     // Description
-    doc
-      .font(FONT.bold)
-      .text(li.description, PAGE.marginX + 28, textY, { width: 172, align: 'left', lineBreak: false });
+    doc.font(FONT.bold).fontSize(8.5).fillColor(COLORS.text)
+      .text(li.description, PAGE.marginX + 22, textY, { width: 152, align: 'left', lineBreak: false });
 
     // SKU
-    doc
-      .font(FONT.regular)
-      .fontSize(7.5)
-      .fillColor(COLORS.textLight)
-      .text(li.product.sku, PAGE.marginX + 208, textY, { width: 62, align: 'left' });
-
-    doc.fontSize(8.5).fillColor(COLORS.text);
+    doc.font(FONT.regular).fontSize(7.5).fillColor(COLORS.textLight)
+      .text(li.product?.sku || '', PAGE.marginX + 180, textY, { width: 56, align: 'left' });
 
     // Qty
-    doc.text(String(li.quantity), PAGE.marginX + 313, textY, { width: 27, align: 'right' });
+    doc.font(FONT.regular).fontSize(8.5).fillColor(COLORS.text)
+      .text(String(li.quantity), PAGE.marginX + 242, textY, { width: 26, align: 'right' });
 
     // Unit Price
     doc.text(
       formatCurrency(li.unit_price_at_creation, currencyCode),
-      PAGE.marginX + 313,
-      textY,
-      { width: 71, align: 'right' }
+      PAGE.marginX + 274, textY,
+      { width: 72, align: 'right' }
     );
 
     // Discount %
     doc.text(
       `${new Decimal(li.discount_percent).toFixed(1)}%`,
-      PAGE.marginX + 388,
-      textY,
+      PAGE.marginX + 352, textY,
       { width: 32, align: 'right' }
     );
 
     // Tax %
     doc.text(
       `${new Decimal(li.tax_rate).toFixed(1)}%`,
-      PAGE.marginX + 428,
-      textY,
-      { width: 32, align: 'right' }
+      PAGE.marginX + 390, textY,
+      { width: 30, align: 'right' }
     );
 
     // Line Total
-    doc
-      .font(FONT.bold)
-      .text(formatCurrency(li.line_total, currencyCode), PAGE.marginX + 468, textY, {
-        width: 75,
-        align: 'right',
+    doc.font(FONT.bold).fontSize(8.5).fillColor(COLORS.text)
+      .text(formatCurrency(li.line_total, currencyCode), PAGE.marginX + 426, textY, {
+        width: 69, align: 'right',
       });
 
     rowY += rowH;
 
-    // Page break if needed
+    // Dynamic page break
     if (rowY > PAGE.height - PAGE.marginBottom - 160) {
       doc.addPage();
       rowY = PAGE.marginTop;
+      // Repeat header on new page
+      doc.rect(PAGE.marginX, rowY, CONTENT_WIDTH, headerH).fill(COLORS.primary);
+      for (const col of cols) {
+        doc.font(FONT.bold).fontSize(8).fillColor(COLORS.white)
+          .text(col.label, col.x + 4, rowY + 7, { width: col.width - 8, align: col.align });
+      }
+      rowY += headerH;
     }
   }
 
@@ -536,55 +546,34 @@ function renderTermsSection(doc: PDFKit.PDFDocument, workspace: Workspace): void
 // ─────────────────────────────────────────────────────────────────────────────
 // Section: Footer (page numbers)
 // ─────────────────────────────────────────────────────────────────────────────
-function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
-  const range = doc.bufferedPageRange();
-  const totalPages = range.count;
+function renderTermsSection(doc: PDFKit.PDFDocument, workspace: Workspace): void {
+  const terms = workspace.terms_and_conditions;
+  if (!terms || terms.trim() === '') return;
 
-  for (let i = 0; i < totalPages; i++) {
-    doc.switchToPage(i);
-
-    // Footer divider
-    doc
-      .moveTo(PAGE.marginX, PAGE.height - PAGE.marginBottom + 10)
-      .lineTo(PAGE.marginX + CONTENT_WIDTH, PAGE.height - PAGE.marginBottom + 10)
-      .strokeColor(COLORS.border)
-      .lineWidth(0.5)
-      .stroke();
-
-    // Left: workspace name
-    doc
-      .font(FONT.regular)
-      .fontSize(7.5)
-      .fillColor(COLORS.textLight)
-      .text(
-        workspace.name,
-        PAGE.marginX,
-        PAGE.height - PAGE.marginBottom + 16,
-        { width: 200 }
-      );
-
-    // Center: Thank you message
-    doc
-      .font(FONT.oblique)
-      .fontSize(7.5)
-      .fillColor(COLORS.textLight)
-      .text(
-        'Thank you for your business.',
-        PAGE.marginX + 150,
-        PAGE.height - PAGE.marginBottom + 16,
-        { width: 200, align: 'center' }
-      );
-
-    // Right: Page numbers
-    doc
-      .font(FONT.regular)
-      .fontSize(7.5)
-      .fillColor(COLORS.textLight)
-      .text(
-        `Page ${i + 1} of ${totalPages}`,
-        PAGE.width - PAGE.marginX - 80,
-        PAGE.height - PAGE.marginBottom + 16,
-        { width: 80, align: 'right' }
-      );
+  if (doc.y + 80 > PAGE.height - PAGE.marginBottom) {
+    doc.addPage();
+    doc.y = PAGE.marginTop;
   }
+
+  const startY = doc.y + 10;
+
+  doc
+    .moveTo(PAGE.marginX, startY)
+    .lineTo(PAGE.marginX + CONTENT_WIDTH, startY)
+    .strokeColor(COLORS.border)
+    .lineWidth(0.8)
+    .stroke();
+
+  doc
+    .font(FONT.bold).fontSize(9).fillColor(COLORS.textLight)
+    .text('TERMS & CONDITIONS', PAGE.marginX, startY + 10);
+
+  doc
+    .font(FONT.regular).fontSize(8).fillColor(COLORS.textLight)
+    .text(terms.trim(), PAGE.marginX, startY + 24, {
+      width: CONTENT_WIDTH,
+      lineBreak: true,
+      lineGap: 2,
+    });
 }
+
