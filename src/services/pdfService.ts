@@ -106,6 +106,7 @@ export async function compileQuotationPdf(
         Subject: `Quotation for ${quotation.client.company_name}`,
         Creator: 'Quotation Engine',
       },
+      autoFirstPage: true,
       bufferPages: true,
     });
 
@@ -547,6 +548,7 @@ function renderTermsSection(doc: PDFKit.PDFDocument, workspace: Workspace): void
 // Section: Footer (page numbers)
 // ─────────────────────────────────────────────────────────────────────────────
 function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
+  doc.flushPages();
   const range = doc.bufferedPageRange();
   const totalPages = range.count;
 
@@ -557,12 +559,6 @@ function renderFooter(doc: PDFKit.PDFDocument, workspace: Workspace): void {
     doc.save();
     doc.translate(PAGE.width / 2, PAGE.height / 2);
     doc.rotate(-45);
-    doc
-      .font(FONT.bold)
-      .fontSize(48)
-      .fillColor('#1A365D')
-      .fillOpacity(0.045)
-      .text('OFFICIAL DOCUMENT', -200, -24, { width: 400, align: 'center' });
     doc
       .fontSize(18)
       .fillOpacity(0.03)
