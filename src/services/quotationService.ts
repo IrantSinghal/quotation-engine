@@ -16,7 +16,6 @@ import {
 import {
   NotFoundError,
   ValidationError,
-  ForbiddenError,
   StockAllocationError,
 } from '../middleware/errorHandler';
 import { PoolClient } from 'pg';
@@ -71,12 +70,12 @@ export async function createQuotation(
 
     // ── 2. For each line item, acquire row-level lock on the product ──
     //    This prevents double-allocation race conditions under concurrent load.
+
     const lockedProducts = new Map<string, Product>();
     for (const item of dto.line_items) {
       const productResult = await client.query<Product>(
         `SELECT * FROM products
-         WHERE id = $1 AND workspace_id = $2 AND is_active = TRUE
-         FOR UPDATE`,  // Exclusive row-level lock
+     WHERE id = $1 AND workspace_id = $2 AND is_active = TRUE`,
         [item.product_id, workspaceId]
       );
 
@@ -87,10 +86,7 @@ export async function createQuotation(
       const product = productResult.rows[0];
 
       // ── 3. Stock gate: check availability before proceeding ──
-      if (product.stock_quantity < item.quantity) {
-        // Rollback is handled automatically by withTransaction on throw
-        throw new StockAllocationError(product.name, item.quantity, product.stock_quantity);
-      }
+
 
       lockedProducts.set(item.product_id, product);
     }
@@ -213,15 +209,7 @@ export async function createQuotation(
       insertedLineItems.push(liResult.rows[0]);
     }
 
-    // ── 8. Decrement stock quantities now that quote is confirmed ──
-    for (const item of dto.line_items) {
-      await client.query(
-        `UPDATE products
-         SET stock_quantity = stock_quantity - $1, updated_at = NOW()
-         WHERE id = $2 AND workspace_id = $3`,
-        [item.quantity, item.product_id, workspaceId]
-      );
-    }
+
 
     // ── 9. Fetch user for response assembly ──
     const userResult = await client.query<UserPublic>(
@@ -322,9 +310,9 @@ export async function getQuotationById(
   const productIds = [...new Set(lineItemsResult.rows.map((li) => li.product_id))];
   const productsResult = productIds.length > 0
     ? await query<Product>(
-        `SELECT * FROM products WHERE id = ANY($1::uuid[])`,
-        [productIds]
-      )
+      `SELECT * FROM products WHERE id = ANY($1::uuid[])`,
+      [productIds]
+    )
     : { rows: [] as Product[] };
 
   const productMap = new Map<string, Product>(
@@ -360,15 +348,88 @@ export async function updateQuotationStatus(
   quotationId: string,
   dto: UpdateQuotationStatusDto
 ): Promise<Quotation> {
-  const result = await query<Quotation>(
-    `UPDATE quotations
-     SET status = $1, updated_at = NOW()
-     WHERE id = $2 AND workspace_id = $3
-     RETURNING *`,
-    [dto.status, quotationId, workspaceId]
-  );
-  if (result.rows.length === 0) {
-    throw new NotFoundError('Quotation');
-  }
-  return result.rows[0];
+  return withTransaction(async (client: PoolClient) => {
+    // Fetch current quotation with its status
+    const currentResult = await client.query<Quotation>(
+      'SELECT * FROM quotations WHERE id = $1 AND workspace_id = $2',
+      [quotationId, workspaceId]
+    );
+    if (currentResult.rows.length === 0) {
+      throw new NotFoundError('Quotation');
+    }
+    const current = currentResult.rows[0];
+    const oldStatus = current.status;
+    const newStatus = dto.status;
+
+    // Fetch all line items for this quotation
+    const lineItemsResult = await client.query<QuotationLineItem>(
+      'SELECT * FROM quotation_line_items WHERE quotation_id = $1',
+      [quotationId]
+    );
+    const lineItems = lineItemsResult.rows;
+
+    // ── STOCK DEDUCTION: draft/sent → accepted ──
+    // Lock products and check stock before deducting
+    if (newStatus === 'accepted' && oldStatus !== 'accepted') {
+      for (const item of lineItems) {
+        // Acquire row-level lock
+        const productResult = await client.query<Product>(
+          `SELECT * FROM products
+           WHERE id = $1 AND workspace_id = $2
+           FOR UPDATE`,
+          [item.product_id, workspaceId]
+        );
+        if (productResult.rows.length === 0) continue;
+        const product = productResult.rows[0];
+
+        // Stock gate — block acceptance if insufficient stock
+        if (product.stock_quantity < item.quantity) {
+          throw new StockAllocationError(
+            product.name,
+            item.quantity,
+            product.stock_quantity
+          );
+        }
+
+        // Deduct stock
+        await client.query(
+          `UPDATE products
+           SET stock_quantity = stock_quantity - $1, updated_at = NOW()
+           WHERE id = $2`,
+          [item.quantity, item.product_id]
+        );
+      }
+
+      logger.info('Stock deducted on quotation acceptance', { quotationId });
+    }
+
+    // ── STOCK RESTORE: accepted → rejected/expired ──
+    // If a previously accepted quote is now rejected or expired, restore stock
+    if (
+      oldStatus === 'accepted' &&
+      (newStatus === 'rejected' || newStatus === 'expired')
+    ) {
+      for (const item of lineItems) {
+        await client.query(
+          `UPDATE products
+           SET stock_quantity = stock_quantity + $1, updated_at = NOW()
+           WHERE id = $2`,
+          [item.quantity, item.product_id]
+        );
+      }
+
+      logger.info('Stock restored on quotation rejection/expiry', { quotationId });
+    }
+
+    // ── Update the status ──
+    const result = await client.query<Quotation>(
+      `UPDATE quotations
+       SET status = $1, updated_at = NOW()
+       WHERE id = $2 AND workspace_id = $3
+       RETURNING *`,
+      [newStatus, quotationId, workspaceId]
+    );
+
+    return result.rows[0];
+  });
 }
