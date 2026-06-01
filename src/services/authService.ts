@@ -224,11 +224,20 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
   };
 
   try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken: dto.id_token,
-      audience: config.google.clientId,
-    });
-    const payload = ticket.getPayload();
+    // Verify by calling Google's userinfo endpoint with the access token
+    const userInfoRes = await fetch(
+      `https://www.googleapis.com/oauth2/v3/userinfo`,
+      { headers: { Authorization: `Bearer ${dto.id_token}` } }
+    );
+    if (!userInfoRes.ok) {
+      throw new AppError('Google token verification failed.', 401, 'GOOGLE_AUTH_FAILED');
+    }
+    const payload = await userInfoRes.json() as {
+      sub: string;
+      email: string;
+      name?: string;
+      email_verified?: boolean;
+    };
     if (!payload || !payload.email) {
       throw new ValidationError('Google token payload is missing email claim.');
     }
