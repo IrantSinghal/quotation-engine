@@ -147,7 +147,7 @@ router.post(
         });
         return;
       }
-      
+
 
       const result = await bulkIngestProducts(
         req.workspace_id!,

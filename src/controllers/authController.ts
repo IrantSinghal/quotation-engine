@@ -19,7 +19,7 @@ const router = Router();
 router.post(
   '/register',
   validate([
-    body('full_name').trim().isLength({ min: 2, max: 225 }).notEmpty().withMessage('User full name is required.'),
+    body('full_name').trim().isLength({ min: 2, max: 2225 }).notEmpty().withMessage('User full name is required.'),
     body('email').isEmail().normalizeEmail().withMessage('A valid email address is required.'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long.'),
     body('workspace_name').trim().notEmpty().withMessage('Workspace name is required.'),
@@ -41,14 +41,14 @@ router.post(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/login
-// Login with email and password
+// Login with email and password (workspace_slug marked optional for layout strategy integration)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post(
   '/login',
   validate([
     body('email').isEmail().normalizeEmail().withMessage('A valid email address is required.'),
     body('password').notEmpty().withMessage('Password is required.'),
-    body('workspace_slug').trim().notEmpty().withMessage('Workspace slug is required.'),
+    body('workspace_slug').trim().optional().withMessage('Workspace slug validation handled conditionally.'),
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -62,13 +62,13 @@ router.post(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/google
-// Login or register via Google ID token (with identity merging)
+// Login or register via Google ID token (workspace_slug marked optional for seamless onboarding sequence)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post(
   '/google',
   validate([
     body('id_token').notEmpty().withMessage('Google ID token is required.'),
-    body('workspace_slug').trim().notEmpty().withMessage('Workspace slug is required.'),
+    body('workspace_slug').trim().optional().withMessage('Workspace slug validation handled conditionally.'),
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
