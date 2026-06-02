@@ -215,6 +215,10 @@ export async function loginWithEmail(dto: LoginDto): Promise<AuthResult> {
 // Google OAuth — with Identity Merging
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Google OAuth — Frictionless Identity Merging & Onboarding Support
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
   let googlePayload: {
     sub: string;
@@ -256,32 +260,20 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
     throw new ValidationError('Google account email is not verified.');
   }
 
-  const workspaceResult = await query<Workspace>(
-    'SELECT * FROM workspaces WHERE slug = $1 AND is_active = TRUE',
-    [dto.workspace_slug]
-  );
-  if (workspaceResult.rows.length === 0) {
-    throw new NotFoundError('Workspace');
-  }
-  const workspace = workspaceResult.rows[0];
-
   let user: User;
+  let workspace: Workspace | null = null;
 
-  const byGoogleId = await query<User>(
-    'SELECT * FROM users WHERE workspace_id = $1 AND google_provider_id = $2',
-    [workspace.id, googlePayload.sub]
+  // STRATEGY PIVOT: Search globally across users schema by email or provider identifier
+  const existingUserCheck = await query<User>(
+    'SELECT * FROM users WHERE google_provider_id = $1 OR email = $2 LIMIT 1',
+    [googlePayload.sub, googlePayload.email.toLowerCase()]
   );
 
-  if (byGoogleId.rows.length > 0) {
-    user = byGoogleId.rows[0];
-  } else {
-    const byEmail = await query<User>(
-      'SELECT * FROM users WHERE workspace_id = $1 AND email = $2',
-      [workspace.id, googlePayload.email.toLowerCase()]
-    );
+  if (existingUserCheck.rows.length > 0) {
+    const existingUser = existingUserCheck.rows[0];
 
-    if (byEmail.rows.length > 0) {
-      const existingUser = byEmail.rows[0];
+    // Merge identity keys seamlessly if provider tracking was empty
+    if (!existingUser.google_provider_id) {
       const mergeResult = await query<User>(
         `UPDATE users
          SET google_provider_id = $1, updated_at = NOW()
@@ -290,23 +282,30 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
         [googlePayload.sub, existingUser.id]
       );
       user = mergeResult.rows[0];
-      logger.info('Google identity merged with existing account', {
-        userId: user.id,
-        workspaceId: workspace.id,
-      });
     } else {
-      const createResult = await query<User>(
-        `INSERT INTO users (workspace_id, email, full_name, google_provider_id, role)
-         VALUES ($1, $2, $3, $4, 'member')
-         RETURNING *`,
-        [workspace.id, googlePayload.email.toLowerCase(), googlePayload.name || googlePayload.email, googlePayload.sub]
-      );
-      user = createResult.rows[0];
-      logger.info('New user created via Google OAuth', {
-        userId: user.id,
-        workspaceId: workspace.id,
-      });
+      user = existingUser;
     }
+
+    // Safely look up associated company registry metadata context if workspace_id exists
+    if (user.workspace_id) {
+      const workspaceResult = await query<Workspace>(
+        'SELECT * FROM workspaces WHERE id = $1 AND is_active = TRUE',
+        [user.workspace_id]
+      );
+      if (workspaceResult.rows.length > 0) {
+        workspace = workspaceResult.rows[0];
+      }
+    }
+  } else {
+    // BRAND NEW USER: Safely allow creation with a null schema space pointer context
+    const createResult = await query<User>(
+      `INSERT INTO users (workspace_id, email, full_name, google_provider_id, role)
+       VALUES (NULL, $1, $2, $3, 'owner')
+       RETURNING *`,
+      [googlePayload.email.toLowerCase(), googlePayload.name || googlePayload.email, googlePayload.sub]
+    );
+    user = createResult.rows[0];
+    logger.info('New onboarding candidate instance created via Google OAuth', { userId: user.id });
   }
 
   if (!user.is_active) {
@@ -316,7 +315,7 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
   const tokenPayload: Omit<AuthTokenPayload, 'iat' | 'exp'> = {
     sub: user.id,
     email: user.email,
-    workspace_id: workspace.id,
+    workspace_id: user.workspace_id || '', // Maintain empty string parsing compatibility for JSON Web Token schemas
     role: user.role,
   };
 
@@ -329,7 +328,7 @@ export async function loginWithGoogle(dto: GoogleAuthDto): Promise<AuthResult> {
     access_token: accessToken,
     refresh_token: refreshToken,
     user: toUserPublic(user),
-    workspace,
+    workspace, // ✅ Directly returns workspace if found, or null if onboarding is required!
   };
 }
 
