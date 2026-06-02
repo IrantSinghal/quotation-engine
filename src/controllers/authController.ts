@@ -48,7 +48,7 @@ router.post(
   validate([
     body('email').isEmail().normalizeEmail().withMessage('A valid email address is required.'),
     body('password').notEmpty().withMessage('Password is required.'),
-    body('workspace_slug').trim().optional().withMessage('Workspace slug validation handled conditionally.'),
+    body('workspace_slug').trim().optional(),
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -68,7 +68,7 @@ router.post(
   '/google',
   validate([
     body('id_token').notEmpty().withMessage('Google ID token is required.'),
-    body('workspace_slug').trim().optional().withMessage('Workspace slug validation handled conditionally.'),
+    body('workspace_slug').trim().optional(),
   ]),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
